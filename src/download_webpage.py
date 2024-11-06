@@ -1,8 +1,9 @@
-from pathlib import Path
-import pdfkit
-import requests
 import argparse
 import xml.etree.ElementTree as ET
+
+import httpx
+import pdfkit
+from pathlib import Path
 
 def download_webpage_as_pdf(url: str, target_path: str) -> None:
     """
@@ -12,10 +13,19 @@ def download_webpage_as_pdf(url: str, target_path: str) -> None:
         url (str): The URL of the webpage to download.
         target_path (str): The path where the PDF should be saved.
     """
-    response = requests.get(url)
-    response.raise_for_status()  # Ensure the request was successful
-    pdfkit.from_string(response.text, target_path)
-    print(f"PDF saved to {target_path}")
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36"}
+
+    try:
+        response = httpx.get(url, headers=headers, timeout=10)
+        response.raise_for_status()  # Ensure the request was successful
+        pdfkit.from_string(response.text, target_path)
+        print(f"PDF saved to {target_path}")
+    except httpx.RequestError as e:
+        print(f"An error occurred while requesting {url}: {e}")
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
+
+
 
 def download_sitemap_as_pdfs(sitemap_path: str, target_dir: str) -> None:
     """
