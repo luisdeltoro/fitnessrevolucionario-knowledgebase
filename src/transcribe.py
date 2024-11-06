@@ -1,4 +1,5 @@
 import argparse
+import os
 import time
 from urllib.parse import urlparse
 
@@ -61,14 +62,57 @@ def check_transcription_job(job_name: str) -> dict:
         status = response["TranscriptionJob"]["TranscriptionJobStatus"]
         if status in ["COMPLETED", "FAILED"]:
             print(f"Transcription job '{job_name}' finished with status: {status}")
+            print(f"Transcript File URI: '{response["TranscriptionJob"]["Transcript"]["TranscriptFileUri"]}'")
             return response
         print("Transcription job in progress...")
         time.sleep(5)
 
 
-def main(input_file: str, language: str):
+def delete_file_from_s3(bucket: str, file_name: str):
+    """
+    Deletes a file from an S3 bucket.
+    """
+    try:
+        s3_client.delete_object(Bucket=bucket, Key=file_name)
+        print(f"Deleted '{file_name}' from bucket '{bucket}'.")
+    except ClientError as e:
+        print(f"Error deleting file from S3: {e}")
+        raise
+
+
+def download_transcription_file(target_dir: str, transcript_uri: str):
+    """
+    Downloads the transcription file from S3 to the specified local directory.
+    """
+    # Extract only the object key part from the full S3 URI
+    # For example, if transcript_uri is 'https://s3.us-east-1.amazonaws.com/ldeltoro-output/transcription-Episodio4.json'
+    # We should only get 'transcription-Episodio4.json' as object_key
+    object_key = transcript_uri.split(f"{OUTPUT_BUCKET}/")[-1]
+
+    # Wait briefly to ensure the file is fully available
+    time.sleep(5)
+
+    try:
+        # Ensure target directory exists
+        os.makedirs(target_dir, exist_ok=True)
+
+        # Define the local path to save the transcription file
+        local_file_path = os.path.join(target_dir, os.path.basename(object_key))
+
+        # Check if the file exists and download it
+        s3_client.head_object(Bucket=OUTPUT_BUCKET, Key=object_key)
+        s3_client.download_file(OUTPUT_BUCKET, object_key, local_file_path)
+
+        print(f"Transcription file downloaded to: {local_file_path}")
+    except ClientError as e:
+        print(f"Error downloading transcription file: {e}")
+        raise
+
+
+def main(input_file: str, language: str, target_dir: str):
     # Generate a unique job name using the file name
     job_name = f"transcription-{input_file.split('/')[-1].split('.')[0]}"
+    file_name = input_file.split("/")[-1]  # Extract only the file name
 
     # Step 1: Upload file to input S3 bucket
     s3_uri = upload_file_to_s3(input_file, INPUT_BUCKET)
@@ -79,11 +123,16 @@ def main(input_file: str, language: str):
     # Step 3: Check transcription job status
     response = check_transcription_job(job_name)
 
-    # Step 4: Handle final output (result is automatically saved to OUTPUT_BUCKET)
+    # Step 4: Delete the input file from the input bucket
+    delete_file_from_s3(INPUT_BUCKET, file_name)
+
+    # Step 5: Download the transcription output to target directory
     if response["TranscriptionJob"]["TranscriptionJobStatus"] == "COMPLETED":
         transcript_uri = response["TranscriptionJob"]["Transcript"]["TranscriptFileUri"]
-        parsed_uri = urlparse(transcript_uri)
-        print(f"Transcription completed. Output available at: {parsed_uri.geturl()}")
+        download_transcription_file(target_dir, transcript_uri)
+        print(f"Transcription completed and file downloaded to {target_dir}")
+    else:
+        print("Transcription job did not complete successfully.")
 
 
 if __name__ == "__main__":
@@ -94,6 +143,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "language", type=str, help="Language code for transcription (e.g., 'en-US')."
     )
+    parser.add_argument(
+        "target_dir", type=str, help="Directory to save the downloaded transcription."
+    )
 
     args = parser.parse_args()
-    main(args.input_file, args.language)
+    main(args.input_file, args.language, args.target_dir)
