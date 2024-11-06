@@ -1,9 +1,10 @@
 import argparse
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import httpx
 import pdfkit
-from pathlib import Path
+
 
 def download_webpage_as_pdf(url: str, target_path: str) -> None:
     """
@@ -13,7 +14,9 @@ def download_webpage_as_pdf(url: str, target_path: str) -> None:
         url (str): The URL of the webpage to download.
         target_path (str): The path where the PDF should be saved.
     """
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36"
+    }
 
     try:
         response = httpx.get(url, headers=headers, timeout=10)
@@ -24,7 +27,6 @@ def download_webpage_as_pdf(url: str, target_path: str) -> None:
         print(f"An error occurred while requesting {url}: {e}")
     except httpx.HTTPStatusError as e:
         print(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
-
 
 
 def download_sitemap_as_pdfs(sitemap_path: str, target_dir: str) -> None:
@@ -42,7 +44,10 @@ def download_sitemap_as_pdfs(sitemap_path: str, target_dir: str) -> None:
     root = tree.getroot()
 
     namespace = {"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
-    urls = [url_elem.text for url_elem in root.findall("ns:url/ns:loc", namespaces=namespace)]
+    urls = [
+        url_elem.text
+        for url_elem in root.findall("ns:url/ns:loc", namespaces=namespace)
+    ]
 
     for url in urls:
         filename = f"{url.replace('https://', '').replace('http://', '').replace('/', '_')}.pdf"
@@ -53,11 +58,24 @@ def download_sitemap_as_pdfs(sitemap_path: str, target_dir: str) -> None:
         except Exception as e:
             print(f"Failed to download {url}: {e}")
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Download pages from a sitemap XML or a single webpage as a PDF.")
-    parser.add_argument("-s", "--sitemap", type=str, help="Path to the sitemap XML file")
-    parser.add_argument("-d", "--directory", type=str, required=True, help="Directory to save the PDF files")
-    parser.add_argument("-p", "--page", type=str, help="URL of a single webpage to download as PDF")
+    parser = argparse.ArgumentParser(
+        description="Download pages from a sitemap XML or a single webpage as a PDF."
+    )
+    parser.add_argument(
+        "-s", "--sitemap", type=str, help="Path to the sitemap XML file"
+    )
+    parser.add_argument(
+        "-d",
+        "--directory",
+        type=str,
+        required=True,
+        help="Directory to save the PDF files",
+    )
+    parser.add_argument(
+        "-p", "--page", type=str, help="URL of a single webpage to download as PDF"
+    )
 
     args = parser.parse_args()
 
@@ -78,6 +96,7 @@ def main():
     else:
         print("Error: Either --sitemap or --page must be provided.")
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()
