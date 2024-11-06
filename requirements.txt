@@ -1,1 +1,3 @@
 httpx==0.24.0  # Ensure the latest compatible version
+pdfkit
+requests
