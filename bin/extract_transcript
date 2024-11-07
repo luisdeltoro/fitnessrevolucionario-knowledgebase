@@ -1,0 +1,34 @@
+#!/bin/bash
+
+process_files_in_directory() {
+    local input_dir="$1"
+    local output_dir="$2"
+
+    if [[ ! -d "$input_dir" ]]; then
+        printf "Error: %s is not a directory.\n" "$input_dir" >&2
+        return 1
+    fi
+
+    mkdir -p "$output_dir"
+
+    local file output_file
+    for file in "$input_dir"/*; do
+        [[ -f "$file" ]] || continue
+        echo "Processing: $file"
+        output_file="$(basename -s .json "$file" | cut -d'-' -f2).txt"
+        if ! jq '.results.transcripts[].transcript' "$file" > "$output_dir/$output_file"; then
+            printf "Error processing %s.\n" "$file" >&2
+        fi
+    done
+}
+
+main() {
+    if [[ $# -ne 2 ]]; then
+        printf "Usage: %s <input_directory> <output_directory>\n" "$(basename "$0")" >&2
+        return 1
+    fi
+
+    process_files_in_directory "$1" "$2"
+}
+
+main "$@"
