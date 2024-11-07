@@ -107,11 +107,29 @@ def download_transcription_file(target_dir: str, transcript_uri: str):
         raise
 
 
+def transcription_job_exists(job_name: str) -> bool:
+    """
+    Checks if a transcription job with the given name already exists.
+    """
+    try:
+        transcribe_client.get_transcription_job(TranscriptionJobName=job_name)
+        print(f"Transcription job '{job_name}' already exists. Skipping file.")
+        return True
+    except transcribe_client.exceptions.BadRequestException:
+        # Job doesn't exist, proceed with new job
+        return False
+
+
 def process_file(input_file: str, language: str, target_dir: str):
     """
     Process a single file: upload, transcribe, delete from S3, and download output.
     """
     job_name = f"transcription-{input_file.split('/')[-1].split('.')[0]}"
+
+    # Step 0: Check if the transcription job already exists
+    if transcription_job_exists(job_name):
+        return
+
     file_name = input_file.split("/")[-1]
 
     # Step 1: Upload file to input S3 bucket
