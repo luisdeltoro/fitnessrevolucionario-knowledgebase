@@ -20,7 +20,7 @@ def download_webpage_as_pdf(url: str, target_path: str) -> None:
 
     try:
         response = httpx.get(url, headers=headers, timeout=10)
-        response.raise_for_status()  # Ensure the request was successful
+        response.raise_for_status()
         pdfkit.from_string(response.text, target_path)
         print(f"PDF saved to {target_path}")
     except httpx.RequestError as e:
@@ -30,13 +30,6 @@ def download_webpage_as_pdf(url: str, target_path: str) -> None:
 
 
 def download_sitemap_as_pdfs(sitemap_path: str, target_dir: str) -> None:
-    """
-    Downloads all pages listed in a sitemap XML file as PDFs and saves them in the target directory.
-
-    Parameters:
-        sitemap_path (str): Path to the sitemap XML file.
-        target_dir (str): Directory where PDFs should be saved.
-    """
     target_dir_path = Path(target_dir)
     target_dir_path.mkdir(parents=True, exist_ok=True)
 
@@ -59,9 +52,26 @@ def download_sitemap_as_pdfs(sitemap_path: str, target_dir: str) -> None:
             print(f"Failed to download {url}: {e}")
 
 
+def download_pages_from_list(page_list_path: str, target_dir: str) -> None:
+    target_dir_path = Path(target_dir)
+    target_dir_path.mkdir(parents=True, exist_ok=True)
+
+    with open(page_list_path, "r") as file:
+        urls = file.read().splitlines()
+
+    for url in urls:
+        filename = f"{url.replace('https://', '').replace('http://', '').replace('/', '_')}.pdf"
+        target_path = target_dir_path / filename
+
+        try:
+            download_webpage_as_pdf(url, str(target_path))
+        except Exception as e:
+            print(f"Failed to download {url}: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Download pages from a sitemap XML or a single webpage as a PDF."
+        description="Download pages from a sitemap XML, a list of pages, or a single webpage as a PDF."
     )
     parser.add_argument(
         "-s", "--sitemap", type=str, help="Path to the sitemap XML file"
@@ -76,11 +86,16 @@ def main():
     parser.add_argument(
         "-p", "--page", type=str, help="URL of a single webpage to download as PDF"
     )
+    parser.add_argument(
+        "-l",
+        "--page_list",
+        type=str,
+        help="Path to a file containing a list of webpage URLs to download as PDFs",
+    )
 
     args = parser.parse_args()
 
     if args.page:
-        # If a single page URL is provided, download it directly
         target_dir_path = Path(args.directory)
         target_dir_path.mkdir(parents=True, exist_ok=True)
 
@@ -91,10 +106,11 @@ def main():
         except Exception as e:
             print(f"Failed to download {args.page}: {e}")
     elif args.sitemap:
-        # If a sitemap is provided, download all pages listed in the sitemap
         download_sitemap_as_pdfs(args.sitemap, args.directory)
+    elif args.page_list:
+        download_pages_from_list(args.page_list, args.directory)
     else:
-        print("Error: Either --sitemap or --page must be provided.")
+        print("Error: You must provide either --sitemap, --page, or --page_list.")
         parser.print_help()
 
 
