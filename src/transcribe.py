@@ -1,6 +1,7 @@
 import argparse
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 
 import boto3
@@ -62,7 +63,6 @@ def check_transcription_job(job_name: str) -> dict:
         status = response["TranscriptionJob"]["TranscriptionJobStatus"]
         if status in ["COMPLETED", "FAILED"]:
             print(f"Transcription job '{job_name}' finished with status: {status}")
-            print(f"Transcript File URI: '{response["TranscriptionJob"]["Transcript"]["TranscriptFileUri"]}'")
             return response
         print("Transcription job in progress...")
         time.sleep(5)
@@ -85,8 +85,6 @@ def download_transcription_file(target_dir: str, transcript_uri: str):
     Downloads the transcription file from S3 to the specified local directory.
     """
     # Extract only the object key part from the full S3 URI
-    # For example, if transcript_uri is 'https://s3.us-east-1.amazonaws.com/ldeltoro-output/transcription-Episodio4.json'
-    # We should only get 'transcription-Episodio4.json' as object_key
     object_key = transcript_uri.split(f"{OUTPUT_BUCKET}/")[-1]
 
     # Wait briefly to ensure the file is fully available
@@ -109,10 +107,12 @@ def download_transcription_file(target_dir: str, transcript_uri: str):
         raise
 
 
-def main(input_file: str, language: str, target_dir: str):
-    # Generate a unique job name using the file name
+def process_file(input_file: str, language: str, target_dir: str):
+    """
+    Process a single file: upload, transcribe, delete from S3, and download output.
+    """
     job_name = f"transcription-{input_file.split('/')[-1].split('.')[0]}"
-    file_name = input_file.split("/")[-1]  # Extract only the file name
+    file_name = input_file.split("/")[-1]
 
     # Step 1: Upload file to input S3 bucket
     s3_uri = upload_file_to_s3(input_file, INPUT_BUCKET)
@@ -135,17 +135,62 @@ def main(input_file: str, language: str, target_dir: str):
         print("Transcription job did not complete successfully.")
 
 
+def main(
+    input_file: str,
+    language: str,
+    target_dir: str,
+    directory: str = None,
+    concurrent: int = 5,
+):
+    # If a directory is provided, process all files in that directory
+    files_to_process = (
+        [input_file]
+        if input_file
+        else [
+            os.path.join(directory, f)
+            for f in os.listdir(directory)
+            if os.path.isfile(os.path.join(directory, f))
+        ]
+    )
+
+    # Process files with concurrency limit
+    with ThreadPoolExecutor(max_workers=concurrent) as executor:
+        futures = [
+            executor.submit(process_file, file, language, target_dir)
+            for file in files_to_process
+        ]
+
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Error processing file: {e}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Upload a file and start AWS transcription."
+        description="Upload files and start AWS transcription jobs."
     )
-    parser.add_argument("input_file", type=str, help="Path to the input file.")
+    parser.add_argument("--input_file", type=str, help="Path to a single input file.")
+    parser.add_argument(
+        "--dir", type=str, help="Path to a directory containing files to transcribe."
+    )
     parser.add_argument(
         "language", type=str, help="Language code for transcription (e.g., 'en-US')."
     )
     parser.add_argument(
-        "target_dir", type=str, help="Directory to save the downloaded transcription."
+        "target_dir", type=str, help="Directory to save the downloaded transcriptions."
+    )
+    parser.add_argument(
+        "--concurrent",
+        type=int,
+        default=5,
+        help="Max number of concurrent transcriptions.",
     )
 
     args = parser.parse_args()
-    main(args.input_file, args.language, args.target_dir)
+
+    if not (args.input_file or args.dir):
+        print("Error: Either --input_file or --dir must be provided.")
+    else:
+        main(args.input_file, args.language, args.target_dir, args.dir, args.concurrent)
